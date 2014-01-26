@@ -87,7 +87,7 @@ func (s ServerBody) Inbox() chan *Envelope {
     return InChan
 }
 
-func AddPeer(id int, config string) {
+func AddPeer(id int, config string) Server{
 
     type ConfigData struct {
         Total int
@@ -101,19 +101,26 @@ func AddPeer(id int, config string) {
     var c ConfigData
     err := json.Unmarshal(ConfigFile. &c)
 
+    Me Server
+    MyStruct ServerBody
+
     for i, pid := range c.Ids {
         if(pid == id){
-            
+            MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds, c.Ids, make(chan Envelope), make (chan Envelope)}
+
+            context, _ := zmq.NewContext()
+            socket, _ := context.NewSocket(zmq.REP)
+            socket.Bind(Adds[i])
+
+            go for {
+                msg, _ := socket.Recv(0)
+                println("Got", string(msg))
+                socket.Send(msg, 0)
+            }
         }
     }
 
-    context, _ := zmq.NewContext()
-    socket, _ := context.NewSocket(zmq.REP)
-    socket.Bind("tcp://127.0.0.1:5000")
+    Me = Server(ServerBody)
 
-    for {
-        msg, _ := socket.Recv(0)
-        println("Got", string(msg))
-        socket.Send(msg, 0)
-    }
+    return Me
 }
