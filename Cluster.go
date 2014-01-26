@@ -123,8 +123,8 @@ func (s ServerBody) Sender() int {
 		}
 
 		for j, toPid := range s.Peers() {
-			if toPid == toId {
-				fmt.Printf("Sending Message to %s ...", s.PeerAdds[j])
+			if (toPid == toId || toId == -1) && toPid != s.MyId {
+				//fmt.Printf("Sending Message to %s ...", s.PeerAdds[j])
 
 				//context, err := zmq.NewContext()
 				//if(err != nil) { log.Fatal(err) }
@@ -153,8 +153,11 @@ func (s ServerBody) Sender() int {
 				//println("ACK")
 
 				socket.Close()
-				fmt.Printf(" Done\n")
-				break
+				//fmt.Printf(" Done\n")
+
+				if toId != -1 {
+					break
+				}
 			}
 		}
 		s.SendChan <- 1
