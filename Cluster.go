@@ -44,6 +44,10 @@ type Server interface {
 	Inbox() chan *Envelope
 }
 
+type MsgHandler interface {
+	SendTo(add string, msg interface{}) int
+}
+
 type ServerBody struct {
 	// Id of this server
 	MyId int
@@ -65,6 +69,12 @@ type ServerBody struct {
 
 	// Inbox channel
 	InChan chan *Envelope
+
+	// Waiting to hear from somebody
+	RecvChan chan int
+
+	// Waiting to complete sending data
+	SendChan chan int
 }
 
 //ServerBody implementation for Pid()
@@ -86,6 +96,8 @@ func (s ServerBody) Outbox() chan *Envelope {
 func (s ServerBody) Inbox() chan *Envelope {
 	return s.InChan
 }
+
+//ServerBody function for
 
 func AddPeer(id int, config string) Server {
 
@@ -111,15 +123,61 @@ func AddPeer(id int, config string) Server {
 
 	for i, pid := range c.Ids {
 		if pid == id {
-			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds, c.Ids, make(chan *Envelope), make(chan *Envelope)}
+			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
 
-			print("Starting peer at", c.Adds[i])
+			fmt.Printf("Starting peer %d at %s\n", id, c.Adds[i])
+			//println(c.Adds[0])
 
 			context, _ := zmq.NewContext()
 			socket, _ := context.NewSocket(zmq.REP)
 			socket.Bind(c.Adds[i])
 
-			fmt.Printf("Server deployed")
+			MyStruct.RecvChan <- 1
+			MyStruct.SendChan <- 1
+
+			go func() {
+				for {
+					<-MyStruct.RecvChan
+					msg, _ := socket.Recv(0)
+
+					fmt.Printf("Recvd something")
+
+					var e Envelope
+
+					err = json.Unmarshal(msg, &e)
+					println(e.Msg)
+					Me.Inbox() <- &e
+					println("Message recieved")
+					MyStruct.RecvChan <- 1
+				}
+			}()
+
+			go func() {
+				for {
+					<-MyStruct.SendChan
+					//println("Am here1")
+					e := <-Me.Outbox()
+					var toId int
+					toId = e.Pid
+					e.Pid = Me.Pid()
+					m, _ := json.Marshal(e)
+
+					for j, toPid := range Me.Peers() {
+						if toPid == toId {
+							fmt.Printf("Sending Message to %s", MyStruct.PeerAdds[j])
+							socket.Connect(MyStruct.PeerAdds[j])
+							socket.Send([]byte(m), 0)
+							fmt.Printf(" Done\n")
+							break
+						}
+					}
+					MyStruct.SendChan <- 1
+				}
+			}()
+
+			fmt.Printf("Server deployed\n")
+
+			break
 		}
 	}
 
