@@ -25,7 +25,7 @@ Now you can access the interfaces, structs and functions by through `cluster` na
 Documentation
 -------------
 
-#### func AddPear
+#### func AddPeer
 `func AddPeer(id int, config string) Server`
 
    id - Peer's id  

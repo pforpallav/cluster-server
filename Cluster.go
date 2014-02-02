@@ -8,7 +8,7 @@ import (
 	//"strings"
 )
 
-import zmq "github.com/alecthomas/gozmq"
+import zmq "github.com/pebbe/zmq4"
 
 const (
 	BROADCAST = -1
@@ -44,9 +44,10 @@ type Server interface {
 	Inbox() chan *Envelope
 }
 
+//Inteface for messaging
 type MsgHandler interface {
 	Sender() int
-	Reciever() int
+	Receiver() int
 }
 
 type ServerBody struct {
@@ -76,12 +77,6 @@ type ServerBody struct {
 
 	// Waiting to complete sending data
 	SendChan chan int
-
-	//zmq Context
-	context *zmq.Context
-
-	//zmq socket
-	//socket *zmq.Socket
 }
 
 //ServerBody implementation for Pid()
@@ -129,7 +124,7 @@ func (s ServerBody) Sender() int {
 				//context, err := zmq.NewContext()
 				//if(err != nil) { log.Fatal(err) }
 
-				socket, err := s.context.NewSocket(zmq.REQ)
+				socket, err := zmq.NewSocket(zmq.PUSH)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -140,17 +135,11 @@ func (s ServerBody) Sender() int {
 				}
 				//println("Connected")
 
-				err = socket.Send([]byte(m), 0)
+				_, err = socket.SendBytes([]byte(m), 0)
 				if err != nil {
 					log.Fatal(err)
 				}
 				//println("Sent")
-
-				_, err = socket.Recv(0)
-				if err != nil {
-					log.Fatal(err)
-				}
-				//println("ACK")
 
 				socket.Close()
 				//fmt.Printf(" Done\n")
@@ -166,10 +155,10 @@ func (s ServerBody) Sender() int {
 	return 0
 }
 
-//ServerBody implementation for Reciever
-func (s ServerBody) Reciever() int {
+//ServerBody implementation for Receiver
+func (s ServerBody) Receiver() int {
 
-	socket, _ := s.context.NewSocket(zmq.REP)
+	socket, _ := zmq.NewSocket(zmq.PULL)
 	socket.Bind(s.MyAdd)
 
 	//println("Bound to ",s.MyAdd)
@@ -178,12 +167,13 @@ func (s ServerBody) Reciever() int {
 		<-s.RecvChan
 		//println("Recieving")
 
-		msg, err := socket.Recv(0)
+		msg, err := socket.RecvBytes(0)
 		if err != nil {
 			log.Fatal(err)
 		}
+		//println("Received!")
 
-		//Unmarshal the recieved message into an Envelope
+		//Unmarshal the received message into an Envelope
 		var e Envelope
 		err = json.Unmarshal(msg, &e)
 		if err != nil {
@@ -192,12 +182,6 @@ func (s ServerBody) Reciever() int {
 
 		//Sending on the Inbox channel
 		s.Inbox() <- &e
-
-		err = socket.Send(msg, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
-		//println("ACK")
 
 		//Enabling next Recieve action
 		s.RecvChan <- 1
@@ -233,21 +217,16 @@ func AddPeer(id int, config string) Server {
 	for i, pid := range c.Ids {
 		if pid == id {
 			//Initialising Server
-			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1), nil}
+			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
 
 			fmt.Printf("Starting peer %d at %s ...", id, c.Adds[i])
 			//println(c.Adds[0])
 
-			//Enabling Sender and Reciever channels
+			//Enabling Sender and Receiver channels
 			MyStruct.RecvChan <- 1
 			MyStruct.SendChan <- 1
 
-			MyStruct.context, err = zmq.NewContext()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			go MyStruct.Reciever()
+			go MyStruct.Receiver()
 			go MyStruct.Sender()
 			fmt.Printf(" Server deployed\n")
 
