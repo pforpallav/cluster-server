@@ -1,7 +1,7 @@
 cluster-server
 ==============
 
-A simple cluster server package for golang. The library uses ZeroMQ bindings for golang (https://github.com/alecthomas/gozmq).
+A simple cluster server package for golang. The library uses ZeroMQ bindings for golang (https://github.com/pebbe/zmq4).
 
 
 Install
