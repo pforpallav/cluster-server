@@ -12,7 +12,7 @@ import (
 
 const (
 	NUMPEERS = 5
-	MAINLOOP = 100
+	MAINLOOP = 1000
 )
 
 var WaitSender chan int

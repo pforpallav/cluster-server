@@ -66,6 +66,9 @@ type ServerBody struct {
 	// Array of other servers' id
 	PeerIds []int
 
+	// Array of sockets to peers
+	PeerSockets []*zmq.Socket
+
 	// Outbox channel
 	OutChan chan *Envelope
 
@@ -124,24 +127,27 @@ func (s ServerBody) Sender() int {
 				//context, err := zmq.NewContext()
 				//if(err != nil) { log.Fatal(err) }
 
-				socket, err := zmq.NewSocket(zmq.PUSH)
-				if err != nil {
-					log.Fatal(err)
+				// Creating and connecting a new socket for communication if that doesnt already exist
+				if(s.PeerSockets[j] == nil){
+					s.PeerSockets[j], err = zmq.NewSocket(zmq.PUSH)
+					if err != nil {
+						log.Fatal(err)
+					}
+					defer s.PeerSockets[j].Close()
+
+					err = s.PeerSockets[j].Connect(s.PeerAdds[j])
+					if err != nil {
+						log.Fatal(err)
+					}
+					//println("Connected")
 				}
 
-				err = socket.Connect(s.PeerAdds[j])
-				if err != nil {
-					log.Fatal(err)
-				}
-				//println("Connected")
-
-				_, err = socket.SendBytes([]byte(m), 0)
+				_, err = s.PeerSockets[j].SendBytes([]byte(m), 0)
 				if err != nil {
 					log.Fatal(err)
 				}
 				//println("Sent")
 
-				socket.Close()
 				//fmt.Printf(" Done\n")
 
 				if toId != -1 {
@@ -160,6 +166,8 @@ func (s ServerBody) Receiver() int {
 
 	socket, _ := zmq.NewSocket(zmq.PULL)
 	socket.Bind(s.MyAdd)
+
+	defer socket.Close()
 
 	//println("Bound to ",s.MyAdd)
 	for {
@@ -217,7 +225,7 @@ func AddPeer(id int, config string) Server {
 	for i, pid := range c.Ids {
 		if pid == id {
 			//Initialising Server
-			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
+			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make([] *zmq.Socket, c.Total), make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
 
 			fmt.Printf("Starting peer %d at %s ...", id, c.Adds[i])
 			//println(c.Adds[0])
