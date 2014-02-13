@@ -38,10 +38,10 @@ type Server interface {
 	// the channel to use to send messages to other peers
 	// Note that there are no guarantees of message delivery, and messages
 	// are silently dropped
-	Outbox() chan *Envelope
+	Outbox() chan<- *Envelope
 
 	// the channel to receive messages from other peers.
-	Inbox() chan *Envelope
+	Inbox() <-chan *Envelope
 }
 
 //Inteface for messaging
@@ -93,12 +93,12 @@ func (s ServerBody) Peers() []int {
 }
 
 //ServerBody implementation for Outbox()
-func (s ServerBody) Outbox() chan *Envelope {
+func (s ServerBody) Outbox() chan<- *Envelope {
 	return s.OutChan
 }
 
 //ServerBody implementation for Inbox()
-func (s ServerBody) Inbox() chan *Envelope {
+func (s ServerBody) Inbox() <-chan *Envelope {
 	return s.InChan
 }
 
@@ -109,7 +109,7 @@ func (s ServerBody) Sender() int {
 		<-s.SendChan
 
 		//Waiting for Outbox entry
-		e := <-s.Outbox()
+		e := <-s.OutChan
 
 		//Changing the Pid to Sender
 		var toId int
@@ -189,7 +189,7 @@ func (s ServerBody) Receiver() int {
 		}
 
 		//Sending on the Inbox channel
-		s.Inbox() <- &e
+		s.InChan <- &e
 
 		//Enabling next Recieve action
 		s.RecvChan <- 1
