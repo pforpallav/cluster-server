@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -115,10 +117,10 @@ func (s ServerBody) Sender() int {
 		var toId int
 		toId = e.Pid
 		e.Pid = s.Pid()
-		m, err := json.Marshal(e) //Marshal encoding
-		if err != nil {
-			log.Fatal(err)
-		}
+		m := new(bytes.Buffer)
+		//m, err := json.Marshal(e) //Marshal encoding
+		enc := gob.NewEncoder(m)
+		err := enc.Encode(e)
 
 		for j, toPid := range s.Peers() {
 			if (toPid == toId || toId == -1) && toPid != s.MyId {
@@ -128,7 +130,7 @@ func (s ServerBody) Sender() int {
 				//if(err != nil) { log.Fatal(err) }
 
 				// Creating and connecting a new socket for communication if that doesnt already exist
-				if(s.PeerSockets[j] == nil){
+				if s.PeerSockets[j] == nil {
 					s.PeerSockets[j], err = zmq.NewSocket(zmq.PUSH)
 					if err != nil {
 						log.Fatal(err)
@@ -142,7 +144,7 @@ func (s ServerBody) Sender() int {
 					//println("Connected")
 				}
 
-				_, err = s.PeerSockets[j].SendBytes([]byte(m), 0)
+				_, err = s.PeerSockets[j].SendBytes(m.Bytes(), 0)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -181,9 +183,12 @@ func (s ServerBody) Receiver() int {
 		}
 		//println("Received!")
 
-		//Unmarshal the received message into an Envelope
+		p := bytes.NewBuffer(msg)
+		dec := gob.NewDecoder(p)
+
+		//Decode the received message into an Envelope
 		var e Envelope
-		err = json.Unmarshal(msg, &e)
+		err = dec.Decode(&e)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -225,7 +230,7 @@ func AddPeer(id int, config string) Server {
 	for i, pid := range c.Ids {
 		if pid == id {
 			//Initialising Server
-			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make([] *zmq.Socket, c.Total), make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
+			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make([]*zmq.Socket, c.Total), make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
 
 			fmt.Printf("Starting peer %d at %s ...", id, c.Adds[i])
 			//println(c.Adds[0])
