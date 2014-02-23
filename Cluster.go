@@ -13,7 +13,8 @@ import (
 import zmq "github.com/pebbe/zmq4"
 
 const (
-	BROADCAST = -1
+	BROADCAST   = -1
+	PRINT_START = 0
 )
 
 type Envelope struct {
@@ -44,6 +45,10 @@ type Server interface {
 
 	// the channel to receive messages from other peers.
 	Inbox() <-chan *Envelope
+
+	// pause/unpause - drop messages recieved and to be sent
+	Pause() bool
+	Unpause() bool
 }
 
 //Inteface for messaging
@@ -82,6 +87,9 @@ type ServerBody struct {
 
 	// Waiting to complete sending data
 	SendChan chan int
+
+	// Drop incoming messages (simulate cutoff)
+	Cutoff *bool
 }
 
 //ServerBody implementation for Pid()
@@ -104,6 +112,18 @@ func (s ServerBody) Inbox() <-chan *Envelope {
 	return s.InChan
 }
 
+//ServerBody implementation for Pause()
+func (s ServerBody) Pause() bool {
+	*s.Cutoff = true
+	return true
+}
+
+//ServerBody implementation for Unpause()
+func (s ServerBody) Unpause() bool {
+	*s.Cutoff = false
+	return false
+}
+
 //ServerBody implementation for Sender
 func (s ServerBody) Sender() int {
 	for {
@@ -122,41 +142,46 @@ func (s ServerBody) Sender() int {
 		enc := gob.NewEncoder(m)
 		err := enc.Encode(e)
 
-		for j, toPid := range s.Peers() {
-			if (toPid == toId || toId == -1) && toPid != s.MyId {
-				//fmt.Printf("Sending Message to %s ...", s.PeerAdds[j])
+		if !(*s.Cutoff) {
+			for j, toPid := range s.Peers() {
+				if (toPid == toId || toId == -1) && toPid != s.MyId {
+					//fmt.Printf("Sending Message to %s ...", s.PeerAdds[j])
 
-				//context, err := zmq.NewContext()
-				//if(err != nil) { log.Fatal(err) }
+					//context, err := zmq.NewContext()
+					//if(err != nil) { log.Fatal(err) }
 
-				// Creating and connecting a new socket for communication if that doesnt already exist
-				if s.PeerSockets[j] == nil {
-					s.PeerSockets[j], err = zmq.NewSocket(zmq.PUSH)
+					// Creating and connecting a new socket for communication if that doesnt already exist
+					if s.PeerSockets[j] == nil {
+						s.PeerSockets[j], err = zmq.NewSocket(zmq.PUSH)
+						if err != nil {
+							log.Fatal(err)
+						}
+						defer s.PeerSockets[j].Close()
+
+						err = s.PeerSockets[j].Connect(s.PeerAdds[j])
+						if err != nil {
+							log.Fatal(err)
+						}
+						//println("Connected")
+					}
+
+					_, err = s.PeerSockets[j].SendBytes(m.Bytes(), 0)
 					if err != nil {
 						log.Fatal(err)
 					}
-					defer s.PeerSockets[j].Close()
+					//println("Sent")
 
-					err = s.PeerSockets[j].Connect(s.PeerAdds[j])
-					if err != nil {
-						log.Fatal(err)
+					//fmt.Printf(" Done\n")
+
+					if toId != -1 {
+						break
 					}
-					//println("Connected")
-				}
-
-				_, err = s.PeerSockets[j].SendBytes(m.Bytes(), 0)
-				if err != nil {
-					log.Fatal(err)
-				}
-				//println("Sent")
-
-				//fmt.Printf(" Done\n")
-
-				if toId != -1 {
-					break
 				}
 			}
-		}
+		} /*else {
+			println("Blocked @ Sender %d\n", s.MyId)
+		}*/
+
 		s.SendChan <- 1
 	}
 
@@ -193,8 +218,13 @@ func (s ServerBody) Receiver() int {
 			log.Fatal(err)
 		}
 
-		//Sending on the Inbox channel
-		s.InChan <- &e
+		//println(msg)
+		//Sending on the Inbox channel if not Paused
+		if !(*s.Cutoff) {
+			s.InChan <- &e
+		} /*else {
+			println("Blocked @ Reciever %d\n", s.MyId)
+		}*/
 
 		//Enabling next Recieve action
 		s.RecvChan <- 1
@@ -230,9 +260,12 @@ func AddPeer(id int, config string) Server {
 	for i, pid := range c.Ids {
 		if pid == id {
 			//Initialising Server
-			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make([]*zmq.Socket, c.Total), make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1)}
+			MyStruct = ServerBody{pid, c.Adds[i], c.Total, c.Adds /*append(c.Adds[:i], c.Adds[i+1:]...)*/, c.Ids /*append(c.Ids[:i], c.Ids[i+1:]...)*/, make([]*zmq.Socket, c.Total), make(chan *Envelope), make(chan *Envelope), make(chan int, 1), make(chan int, 1), new(bool)}
+			*MyStruct.Cutoff = false
 
-			fmt.Printf("Starting peer %d at %s ...", id, c.Adds[i])
+			if PRINT_START == 1 {
+				fmt.Printf("Starting peer %d at %s ...", id, c.Adds[i])
+			}
 			//println(c.Adds[0])
 
 			//Enabling Sender and Receiver channels
@@ -241,7 +274,9 @@ func AddPeer(id int, config string) Server {
 
 			go MyStruct.Receiver()
 			go MyStruct.Sender()
-			fmt.Printf(" Server deployed\n")
+			if PRINT_START == 1 {
+				fmt.Printf(" Server deployed\n")
+			}
 
 			break
 		}
